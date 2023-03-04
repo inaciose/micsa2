@@ -54,6 +54,7 @@ MFRC522 rfid_reader(SS_PIN, RST_PIN);
 
 MPU6050 accelgyro;
 int16_t ax, ay, az, gx, gy, gz;
+int16_t prev_ax, prev_ay, prev_az, prev_gx, prev_gy, prev_gz;
 
 
 /*
@@ -66,7 +67,8 @@ int16_t ax, ay, az, gx, gy, gz;
 #define GREEN_LED_PIN A2
 
 char pin_code[6] = {'0', '0', '0', '0', '0', '0'};
-byte number_of_tries = 3; // TODO: read value from eeprom at startup
+byte number_of_tries = 3;
+int movement_sensitivity = 500;
 
 /*
 // State machine declaration
@@ -148,6 +150,16 @@ String read_rfid_tag() {
   return IDtag;
 }
 
+bool ongoing_intrusion() {
+  if (digitalRead(DOOR_SWITCH_PIN) == LOW) { return true; }
+  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+  if (abs(ax - prev_ax) > movement_sensitivity || abs(ay - prev_ay) > movement_sensitivity || abs(az - prev_az) > movement_sensitivity) {
+    return true;
+  }
+  prev_ax = ax; prev_ay = ay; prev_az = az;
+  return false;
+}
+
 /*
 // Main
 */
@@ -204,6 +216,13 @@ void setup() {
   Serial.println("Status: Setup complete");
 
   loaded_stored_values();
+
+  prev_ax = accelgyro.getAccelerationX();
+  prev_ay = accelgyro.getAccelerationY();
+  prev_az = accelgyro.getAccelerationZ();
+  prev_gx = accelgyro.getRotationX();
+  prev_gy = accelgyro.getRotationY();
+  prev_gz = accelgyro.getRotationZ();
 }  // setup()
 
 void loop() {
@@ -250,16 +269,10 @@ void loop() {
           state = V_AUTH;
           break;
         }
-        accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-        // display tab-separated accel/gyro x/y/z values
-        Serial.print("a/g:\t");
-        Serial.print(ax); Serial.print("\t");
-        Serial.print(ay); Serial.print("\t");
-        Serial.print(az); Serial.print("\t");
-        Serial.print(gx); Serial.print("\t");
-        Serial.print(gy); Serial.print("\t");
-        Serial.println(gz);
-        if (digitalRead(DOOR_SWITCH_PIN) == LOW) { state = V_ALARM; break; }
+        if ( ongoing_intrusion() ) {
+          state = V_ALARM;
+          break;
+        }
       }
       break;
     }
@@ -321,6 +334,8 @@ void loop() {
       lcd.print("    DISABLED    ");
       delay(5000);
       state = V_IDLE;
+      accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+      prev_ax = ax; prev_ay = ay; prev_az = az;
       break;
     }
     case V_OPENED: {
