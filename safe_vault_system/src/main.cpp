@@ -68,7 +68,7 @@ int16_t prev_ax, prev_ay, prev_az, prev_gx, prev_gy, prev_gz;
 
 char pin_code[6] = {'0', '0', '0', '0', '0', '0'};
 byte number_of_tries = 3;
-int movement_sensitivity = 500;
+int movement_sensitivity = 1500;
 
 /*
 // State machine declaration
