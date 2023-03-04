@@ -1,5 +1,8 @@
+#include "I2Cdev.h"
+#include "MPU6050.h"
 #include <SPI.h>
 #include <Wire.h>
+#include <EEPROM.h>
 #include <Keypad.h>
 #include <Arduino.h>
 #include <MFRC522.h>
@@ -27,6 +30,33 @@ Keypad keypad = Keypad( makeKeymap(keys), pin_rows, pin_column, ROW_NUM, COLUMN_
 LiquidCrystal_PCF8574 lcd(0x27);
 
 /*
+// RFID Configuration
+*/
+
+#define SS_PIN 2
+#define RST_PIN 3
+
+String config_tag_id = "baaeb115";
+String open_tag_id = "4ae1c8a646984";
+MFRC522 rfid_reader(SS_PIN, RST_PIN); 
+
+/*
+// EEPROM
+*/
+
+#define EPROM_BASE_PIN_CODE 0
+#define EPROM_PIN_CODE_BYTES 6
+#define EPROM_PIN_CODE_TRIES 6
+
+/*
+// Gyroscope
+*/
+
+MPU6050 accelgyro;
+int16_t ax, ay, az, gx, gy, gz;
+
+
+/*
 // Other pin definitions
 */
 
@@ -35,8 +65,8 @@ LiquidCrystal_PCF8574 lcd(0x27);
 #define BUZZER_PIN A1
 #define GREEN_LED_PIN A2
 
-char pin_code[6] = {'0', '0', '0', '0', '0', '0'}; // TODO: read value from eeprom at startup
-short unsigned int number_of_tries = 3; // TODO: read value from eeprom at startup
+char pin_code[6] = {'0', '0', '0', '0', '0', '0'};
+byte number_of_tries = 3; // TODO: read value from eeprom at startup
 
 /*
 // State machine declaration
@@ -57,6 +87,30 @@ int auth_destination = 0; // Auth destination global signal 0 for OPENED, 1 for 
 /*
 // Functions
 */
+
+void loaded_stored_values(void) {
+  // using globals 
+  // loaded stored pin code
+  for(int f=0; f<EPROM_PIN_CODE_BYTES; f++ ) {
+    pin_code[f] = EEPROM.read(EPROM_BASE_PIN_CODE + f);
+  }
+
+  // loaded stored pin tries
+  number_of_tries = EEPROM.read(EPROM_PIN_CODE_TRIES);
+
+}
+
+void update_stored_values(void) {
+  // using globals 
+  // loaded stored pin code
+  for(int f=0; f<EPROM_PIN_CODE_BYTES; f++ ) {
+    EEPROM.update(EPROM_BASE_PIN_CODE + f, pin_code[f]);
+  }
+
+  // loaded stored pin tries
+  EEPROM.update(EPROM_PIN_CODE_TRIES, number_of_tries);
+
+}
 
 void read_pin_code(char* entered_pin_code, boolean in_alarm) {
   /*
@@ -83,11 +137,33 @@ void read_pin_code(char* entered_pin_code, boolean in_alarm) {
   }
 }
 
+String read_rfid_tag() {
+  String IDtag = "";
+  if ( !rfid_reader.PICC_IsNewCardPresent() || !rfid_reader.PICC_ReadCardSerial() ) { delay(50); return IDtag; }
+
+  // Uses rfid_reader.uid to store the unique identification on the IDtag variable    
+  for (byte i = 0; i < rfid_reader.uid.size; i++) {        
+      IDtag.concat(String(rfid_reader.uid.uidByte[i], HEX));
+  }        
+  return IDtag;
+}
+
 /*
 // Main
 */
 
 void setup() {
+  // Define a default pin for when 
+  // pin_code[0] = '1';
+  // pin_code[1] = '1';
+  // pin_code[2] = '1';
+  // pin_code[3] = '1';
+  // pin_code[4] = '1';
+  // pin_code[5] = '1';
+  // number_of_tries = 5;
+  // update_stored_values();
+
+
   // Start serial port and wait for a connection.
   Serial.begin(9600);
   while (!Serial)
@@ -100,13 +176,34 @@ void setup() {
   Wire.endTransmission();
   lcd.begin(16, 2);
 
+  // SPI and RFID initialization
+  SPI.begin();
+  rfid_reader.PCD_Init();
+
   // Others
   pinMode(RED_LED_PIN, OUTPUT);
   pinMode(DOOR_SWITCH_PIN, INPUT_PULLUP);
   pinMode(BUZZER_PIN, OUTPUT);
   pinMode(GREEN_LED_PIN, OUTPUT);
 
+    // join I2C bus (I2Cdev library doesn't do this automatically)
+  #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
+      Wire.begin();
+  #elif I2CDEV_IMPLEMENTATION == I2CDEV_BUILTIN_FASTWIRE
+      Fastwire::setup(400, true);
+  #endif
+
+  Serial.println("Initializing I2C devices...");
+  accelgyro.initialize();
+
+  // verify connection
+  Serial.println("Testing device connections...");
+  Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
+
+
   Serial.println("Status: Setup complete");
+
+  loaded_stored_values();
 }  // setup()
 
 void loop() {
@@ -120,7 +217,6 @@ void loop() {
       */
       lcd.clear();
       lcd.setBacklight(0);
-
       while (1)
       {
         if (Serial.available() > 0)
@@ -144,6 +240,25 @@ void loop() {
             break;
           }
         }
+        if (read_rfid_tag() == open_tag_id) {
+          auth_destination = 0;
+          state = V_AUTH;
+          break;
+        }
+        if (read_rfid_tag() == config_tag_id) {
+          auth_destination = 1;
+          state = V_AUTH;
+          break;
+        }
+        accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+        // display tab-separated accel/gyro x/y/z values
+        Serial.print("a/g:\t");
+        Serial.print(ax); Serial.print("\t");
+        Serial.print(ay); Serial.print("\t");
+        Serial.print(az); Serial.print("\t");
+        Serial.print(gx); Serial.print("\t");
+        Serial.print(gy); Serial.print("\t");
+        Serial.println(gz);
         if (digitalRead(DOOR_SWITCH_PIN) == LOW) { state = V_ALARM; break; }
       }
       break;
@@ -262,6 +377,7 @@ void loop() {
               lcd.setCursor(0, 0);
               lcd.print("   ENTER PIN:   ");
               read_pin_code(pin_code, false);
+              update_stored_values();
               break;
             }
             if (digitalRead(DOOR_SWITCH_PIN) == LOW) { state = V_ALARM; break; }
