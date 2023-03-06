@@ -153,7 +153,11 @@ void read_pin_code(char* entered_pin_code, bool in_alarm, bool no_movement = tru
   
   for(int i = 0; i < 6;)
   {
-    if (in_alarm) { digitalWrite(RED_LED_PIN, HIGH); digitalWrite(BUZZER_PIN, HIGH); }
+    if (in_alarm) {
+      digitalWrite(RED_LED_PIN, HIGH);
+      int potentiometer_value = analogRead(A3);
+      tone(BUZZER_PIN,map(potentiometer_value, 0, 1023, 200, 40000),1000);
+      }
     char key = keypad.getKey();
     if (key != NO_KEY)
     {
