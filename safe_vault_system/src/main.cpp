@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include <MFRC522.h>
 #include <LiquidCrystal_PCF8574.h>
+#include <Adafruit_PWMServoDriver.h>
 
 /*
 // Keypad Configuration
@@ -55,6 +56,19 @@ MFRC522 rfid_reader(SS_PIN, RST_PIN);
 MPU6050 accelgyro;
 int16_t ax, ay, az, gx, gy, gz;
 int16_t prev_ax, prev_ay, prev_az, prev_gx, prev_gy, prev_gz;
+
+/*
+// Servo configuration
+*/
+
+Adafruit_PWMServoDriver pwm = Adafruit_PWMServoDriver();
+#define SERVOMIN  250 // This is the 'minimum' pulse length count (out of 4096)
+#define SERVOMAX  400 // This is the 'maximum' pulse length count (out of 4096)
+//#define USMIN  600 // This is the rounded 'minimum' microsecond length based on the minimum pulse of 150
+//#define USMAX  2400 // This is the rounded 'maximum' microsecond length based on the maximum pulse of 600
+#define SERVO_FREQ 50 // Analog servos run at ~50 Hz updates
+// our servo # counter
+uint8_t servonum = 0;
 
 
 /*
@@ -212,6 +226,15 @@ void setup() {
   Serial.println("Testing device connections...");
   Serial.println(accelgyro.testConnection() ? "MPU6050 connection successful" : "MPU6050 connection failed");
 
+  // initialize PCA9685
+  Serial.println("Initializing PCA9685");
+  pwm.begin();
+  //Serial.println("pwm.begin");
+  pwm.setOscillatorFrequency(27000000);
+  //Serial.println("pwm.setOscillatorFrequency");
+  pwm.setPWMFreq(SERVO_FREQ);  // Analog servos run at ~50 Hz updates
+  //Serial.println("pwm.setPWMFreq");
+
 
   Serial.println("Status: Setup complete");
 
@@ -350,6 +373,9 @@ void loop() {
       lcd.print("    UNLOCKED    ");
       digitalWrite(GREEN_LED_PIN, HIGH);
       // ROTATE SERVO
+      for (uint16_t pulselen = SERVOMIN; pulselen < SERVOMAX; pulselen++) {
+        pwm.setPWM(servonum, 0, pulselen);
+      }
       delay(5000);
       while (1)
       {
@@ -361,6 +387,10 @@ void loop() {
           lcd.print("      DOOR      ");
           lcd.setCursor(0, 1);
           lcd.print("     LOCKED     ");
+          delay(100);
+          for (uint16_t pulselen = SERVOMAX; pulselen > SERVOMIN; pulselen--) {
+            pwm.setPWM(servonum, 0, pulselen);
+          }
           delay(5000);
           state = V_IDLE;
           break;
