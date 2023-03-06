@@ -8,6 +8,7 @@
 #include <MFRC522.h>
 #include <LiquidCrystal_PCF8574.h>
 #include <Adafruit_PWMServoDriver.h>
+#include <avr/wdt.h>
 
 /*
 // Keypad Configuration
@@ -128,7 +129,20 @@ void update_stored_values(void) {
 
 }
 
-void read_pin_code(char* entered_pin_code, boolean in_alarm) {
+bool ongoing_intrusion(bool no_movement = true) {
+  wdt_reset();
+  if (digitalRead(DOOR_SWITCH_PIN) == LOW) { return true; }
+  if (no_movement) {
+    accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
+    if (abs(ax - prev_ax) > movement_sensitivity || abs(ay - prev_ay) > movement_sensitivity || abs(az - prev_az) > movement_sensitivity) {
+      return true;
+    }
+    prev_ax = ax; prev_ay = ay; prev_az = az;
+  }
+  return false;
+}
+
+void read_pin_code(char* entered_pin_code, bool in_alarm, bool no_movement = true) {
   /*
   // Reads the pin code and writes it to a given position in memory
   */
@@ -149,7 +163,7 @@ void read_pin_code(char* entered_pin_code, boolean in_alarm) {
       i++;
     }
     if (in_alarm) { delay(50); digitalWrite(RED_LED_PIN, LOW); digitalWrite(BUZZER_PIN, LOW); delay(50);}
-    if (digitalRead(DOOR_SWITCH_PIN) == LOW && !in_alarm) {state = V_ALARM; break;}
+    if (ongoing_intrusion(no_movement) && !in_alarm) {state = V_ALARM; break;}
   }
 }
 
@@ -164,30 +178,20 @@ String read_rfid_tag() {
   return IDtag;
 }
 
-bool ongoing_intrusion() {
-  if (digitalRead(DOOR_SWITCH_PIN) == LOW) { return true; }
-  accelgyro.getMotion6(&ax, &ay, &az, &gx, &gy, &gz);
-  if (abs(ax - prev_ax) > movement_sensitivity || abs(ay - prev_ay) > movement_sensitivity || abs(az - prev_az) > movement_sensitivity) {
-    return true;
-  }
-  prev_ax = ax; prev_ay = ay; prev_az = az;
-  return false;
-}
-
 /*
 // Main
 */
 
 void setup() {
   // Define a default pin for when 
-  // pin_code[0] = '1';
-  // pin_code[1] = '1';
-  // pin_code[2] = '1';
-  // pin_code[3] = '1';
-  // pin_code[4] = '1';
-  // pin_code[5] = '1';
-  // number_of_tries = 5;
-  // update_stored_values();
+  //pin_code[0] = '1';
+  //pin_code[1] = '1';
+  //pin_code[2] = '1';
+  //pin_code[3] = '1';
+  //pin_code[4] = '1';
+  //pin_code[5] = '1';
+  //number_of_tries = 5;
+  //update_stored_values();
 
 
   // Start serial port and wait for a connection.
@@ -195,6 +199,9 @@ void setup() {
   while (!Serial)
     ;
   Serial.println("Status: Serial connected");
+
+  wdt_disable(); // Disable watchdog timer
+  wdt_enable(WDTO_8S); // Enable watchdog timer with 8 seconds timeout
 
   // Setup display
   Wire.begin();
@@ -379,6 +386,7 @@ void loop() {
       delay(5000);
       while (1)
       {
+        wdt_reset();
         if (digitalRead(DOOR_SWITCH_PIN) == HIGH) {
           // ROTATE SERVO
           digitalWrite(GREEN_LED_PIN, LOW);
@@ -421,11 +429,11 @@ void loop() {
               lcd.clear();
               lcd.setCursor(0, 0);
               lcd.print("   ENTER PIN:   ");
-              read_pin_code(pin_code, false);
+              read_pin_code(pin_code, false, false);
               update_stored_values();
               break;
             }
-            if (ongoing_intrusion()) { state = V_ALARM; break; }
+            if (ongoing_intrusion(false)) { state = V_ALARM; break; }
           }
           break;
         }
@@ -456,7 +464,7 @@ void loop() {
               }
               break;
             }
-            if (ongoing_intrusion()) { state = V_ALARM; break; }
+            if (ongoing_intrusion(false)) { state = V_ALARM; break; }
           }
           break;
         }
@@ -488,11 +496,11 @@ void loop() {
               state = V_IDLE;
               break;
             }
-            if (ongoing_intrusion()) { state = V_ALARM; break; }
+            if (ongoing_intrusion(false)) { state = V_ALARM; break; }
           }
           break;
         }
-        if (ongoing_intrusion()) { state = V_ALARM; break; }
+        if (ongoing_intrusion(false)) { state = V_ALARM; break; }
       }
 
       lcd.setCursor(0, 0);
