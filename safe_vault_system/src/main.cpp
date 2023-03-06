@@ -395,7 +395,7 @@ void loop() {
               update_stored_values();
               break;
             }
-            if (digitalRead(DOOR_SWITCH_PIN) == LOW) { state = V_ALARM; break; }
+            if (ongoing_intrusion()) { state = V_ALARM; break; }
           }
           break;
         }
@@ -426,7 +426,7 @@ void loop() {
               }
               break;
             }
-            if (digitalRead(DOOR_SWITCH_PIN) == LOW) { state = V_ALARM; break; }
+            if (ongoing_intrusion()) { state = V_ALARM; break; }
           }
           break;
         }
@@ -458,11 +458,11 @@ void loop() {
               state = V_IDLE;
               break;
             }
-            if (digitalRead(DOOR_SWITCH_PIN) == LOW) { state = V_ALARM; break; }
+            if (ongoing_intrusion()) { state = V_ALARM; break; }
           }
           break;
         }
-        if (digitalRead(DOOR_SWITCH_PIN) == LOW) { state = V_ALARM; break; }
+        if (ongoing_intrusion()) { state = V_ALARM; break; }
       }
 
       lcd.setCursor(0, 0);
